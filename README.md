@@ -121,3 +121,7 @@ Tunables (weights, windows, source mix) live in [`lib/config.ts`](lib/config.ts)
 ## License
 
 [Apache License 2.0](LICENSE). Copyright 2026 Dojo.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
