@@ -4,47 +4,78 @@ export interface FeedRequest {
   user_profile_id: string;
   limit?: number;
   offset?: number;
+  /** Fixes the order for one feed session: same seed, same list, so pages never overlap. */
   seed?: number;
+  /** Post ids the caller already has and does not want again (refresh). */
+  exclude_post_ids?: string[];
+  /** A topic tab: the viewer's content filter of this name, ranked on its own. */
+  topic?: string;
 }
 
 export interface FilterContext {
   id: string;
   intensity: number;
-  embedding: number[]; // 1536-dim
 }
+
+/**
+ * Which card in the client's feed-source carousel a signal belongs to. Each card is its own
+ * switch: Trending runs `rising`, Recommended runs the rest.
+ */
+export type FeedSourceKind = 'trending' | 'recommended';
 
 export interface UserContext {
   profileId: string;
   filters: FilterContext[];
-  following: string[];
-  blocked: string[];
   trendingOn: boolean;
-  isPro: boolean;
+  recommendOn: boolean;
+  /** How many distinct interests Yomi found in the user's endorsements. */
+  interestSeeds: number;
 }
 
+/** True when either discovery source is enabled — i.e. Mushin has anything to do. */
+export const anySourceOn = (ctx: UserContext): boolean => ctx.trendingOn || ctx.recommendOn;
+
+/** Mushin's discovery signals, as foryou_candidates_v3 names them. */
+export type SignalName = 'tasteMatch' | 'collaborative' | 'rising' | 'exploration' | 'affinity';
+
+/** One row from retrieval: a post, the source that found it, and that source's raw score. */
+export interface RawCandidate {
+  postId: string;
+  source: 'filter' | SignalName;
+  filterId: string | null;
+  intensity: number;
+  score: number;
+}
+
+/** A candidate as Selection sees it: from one filter (Kata) or from discovery (Mushin). */
 export interface Candidate {
   postId: string;
-  source: 'filter' | 'trending';
+  source: 'filter' | 'discovery';
   filterId?: string; // which filter retrieved it (for allocation)
   intensity: number; // intensity of the owning source
-  similarity: number; // raw cosine from Pinecone
+  similarity: number; // cosine to the filter, or Mushin's blended 0..1 score
 }
 
 export interface CandidateFeatures {
   postId: string;
   authorId: string;
-  dojoId: string | null;
-  eligible: boolean;
-  isAd: boolean;
+  createdAt: string;
   likesCount: number;
   commentsCount: number;
   viewCount: number;
-  createdAt: string;
+  savesCount: number;
+  /** not interested / hide / report, from anyone. */
+  negativeCount: number;
   lastSeenAt: string | null;
-  authorBlocked: boolean;
+  /** The viewer follows the author. */
+  inNetwork: boolean;
+  /** Cosine to the viewer's "avoid" vector; null when they have rejected nothing. */
+  negativeSimilarity: number | null;
 }
 
 export interface ScoredCandidate extends Candidate {
   features: CandidateFeatures;
   score: number;
+  /** Each scorer's contribution, kept with the served list as training data. */
+  parts: Record<string, number>;
 }

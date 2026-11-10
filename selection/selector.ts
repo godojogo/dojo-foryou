@@ -4,7 +4,8 @@
 // intensity-proportional shares.
 
 import { ScoredCandidate, UserContext } from '../lib/types.ts';
-import { computeShares, filterKey, TRENDING_KEY } from './allocator.ts';
+import { CONFIG } from '../lib/config.ts';
+import { computeShares, DISCOVERY_KEY, filterKey } from './allocator.ts';
 
 // Deterministic [0,1) from (seed, postId).
 function seededRand(seed: number, key: string): number {
@@ -17,13 +18,12 @@ function seededRand(seed: number, key: string): number {
 export function select(scored: ScoredCandidate[], ctx: UserContext, seed: number): string[] {
   if (scored.length === 0) return [];
 
-  const EPS = 0.04;
-  for (const s of scored) s.score += EPS * (seededRand(seed, s.postId) - 0.5);
+  for (const s of scored) s.score += CONFIG.jitter * (seededRand(seed, s.postId) - 0.5);
 
-  // Bucket by source: each filter its own bucket, trending one bucket.
+  // Bucket by source: each filter its own bucket, discovery one bucket.
   const buckets = new Map<string, ScoredCandidate[]>();
   for (const s of scored) {
-    const key = s.source === 'trending' ? TRENDING_KEY : filterKey(s.filterId);
+    const key = s.source === 'discovery' ? DISCOVERY_KEY : filterKey(s.filterId);
     let arr = buckets.get(key);
     if (!arr) { arr = []; buckets.set(key, arr); }
     arr.push(s);

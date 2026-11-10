@@ -13,7 +13,13 @@ export const authorDiversityScorer: Scorer = {
     const countByAuthor = new Map<string, number>();
     for (const c of candidates) {
       const n = countByAuthor.get(c.features.authorId) ?? 0;
-      if (n > 0) c.score *= Math.pow(CONFIG.authorDiversityDecay, n);
+      if (n > 0) {
+        // Attenuate toward zero from either side: a repeat must never gain from a negative score.
+        const factor = Math.pow(CONFIG.authorDiversityDecay, n);
+        const next = c.score >= 0 ? c.score * factor : c.score / factor;
+        c.parts.authorRepeat = next - c.score;
+        c.score = next;
+      }
       countByAuthor.set(c.features.authorId, n + 1);
     }
   },

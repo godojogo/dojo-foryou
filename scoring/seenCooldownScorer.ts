@@ -16,7 +16,9 @@ export const seenCooldownScorer: Scorer = {
       if (!last) continue;
       const days = (now - new Date(last).getTime()) / DAY_MS;
       if (days < 0 || days > CONFIG.seen.windowDays) continue;
-      c.score -= CONFIG.seen.weight * Math.exp(-days / CONFIG.seen.tauDays);
+      const penalty = CONFIG.seen.weight * Math.exp(-days / CONFIG.seen.tauDays);
+      c.parts.seen = -penalty;
+      c.score -= penalty;
     }
   },
 };

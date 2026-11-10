@@ -1,123 +1,91 @@
-# Dojo — For You
+# dojo-foryou-v3 — For You feed
 
-The recommendation algorithm behind Dojo's **For You** feed, open-sourced.
+The recommendation algorithm behind Dojo's **For You** feed. Same premise as v2 (the open-source
+`godojogo/dojo-foryou`): **you steer it** — declared content filters with intensity sliders, an
+opt-in behavioural engine — and **engagement is not satisfaction** (dwell is volume, not
+direction). v3 keeps v2's stages and makes every one of them hold at scale.
 
-Most feeds optimize for *attention*. This one is built on a different premise:
-**you should be in control, and engagement is not the same as satisfaction.**
+Same request/response as v2: `{ user_profile_id, limit?, offset?, seed?, exclude_post_ids? }` →
+`{ post_ids, total_found, filters_used, meta }`.
 
-- **You steer it.** The feed is driven by **content filters** with intensity
-  sliders — interests you *declare*, not ones inferred by watching you. The
-  behavioral recommendation engine is **opt-in**.
-- **Engagement ≠ satisfaction.** Staring at a post can mean you love it — or that
-  it made you uncomfortable, or you were morbidly curious. So **dwell is treated
-  as volume, not direction.**
-
-This repo is published in that spirit: here is exactly how the feed works.
-
-## How a feed is assembled
+## A request
 
 ```
-                      request  { profile_id, limit, seed }
-                                      │
-                                      ▼
-                          ┌───────────────────────┐
-                          │  SENSEI  orchestrator  │
-                          └───────────┬───────────┘
-                                      ▼
-              ① QUERY HYDRATION   (read-through context cache)
-                 filters · intensity · follows · blocks · toggle
-                                      │
-            ┌─────────────────────────┴─────────────────────────┐
-            ▼                                                     ▼
-   ② KATA  型  content filters                  ② MUSHIN  無心  recommendations (opt-in)
-      one vector query PER filter                  ┌ YOMI  reads you →
-      (no averaging — interests                    │   multi-interest vectors + an "avoid" vector
-       stay sharp)                                 │
-            │                                       ├ signals: tasteMatch · collaborative
-            │                                       │          rising · exploration · affinity
-            │                                       │
-            │                                       └ blend  − negatives  + exploration quota
-            └─────────────────────────┬─────────────────────────┘
-                                      ▼
-              ③ CANDIDATE HYDRATION   (one Postgres pass)
-                 engagement · recency · eligibility · last-seen
-                                      ▼
-              ④ FILTERS  the gate
-                 drop private · blocked · ads · duplicates
-                                      ▼
-              ⑤ SCORING  the judge
-                 similarity + velocity + recency
-                 − seen-cooldown (decays)  − author-repeat
-                                      ▼
-              ⑥ SELECTION
-                 slots ∝ intensity  (Kata vs Mushin mix)
-                 + seeded exploration
-                                      ▼
-                          ┌───────────────────────┐
-                          │  { post_ids: ranked }  │
-                          └───────────────────────┘
+first page of a session (new seed)                    later pages (same seed)
+──────────────────────────────────                    ───────────────────────
+foryou_context_v3        one Postgres read            foryou_page_v3   one Postgres read:
+  viewer · filters + vectors · toggles · hidden          the stored order, visibility gate
+  Yomi's precomputed interest seeds                      re-applied, exclusions, one slice
+  SQL sources: topic-named (full-text index),
+  rising + exploration (pools), affinity,
+  collaborative (precomputed neighbours)
+          │
+Pinecone                 one parallel wave
+  per filter (topic floor 0.40) · per interest seed
+  hidden authors excluded inside the index
+          │
+foryou_features_v3       one Postgres read
+  live visibility rule (the authority) · counters
+  last seen · in-network · avoid similarity
+          │
+gate → judge → selection  (in the function)
+          │
+foryou_store_v3          off the response path
 ```
 
-Composition is decided by intensity:
-- filters only → 100% **Kata**, split by intensity
-- filters + recommendations on → recommendations take a share, filters the rest
-- **no filters + recommendations on → 100% Mushin** (a pure discovery feed)
+Nothing at request time grows with the size of the network: every read is indexed and bounded,
+vector search scales out in Pinecone, and everything expensive is precomputed —
 
-Retrieval runs against a vector index (pgvector embeddings mirrored to Pinecone);
-ranking, eligibility and the engagement/recency layers run in Postgres.
+| Precomputed | When | Where |
+|---|---|---|
+| Interest seeds, avoid vector, taste neighbours | each minute, for users who acted (and on first request) | `private.user_taste_vectors` |
+| Rising, exploration pools | each minute, from bounded inputs | `private.foryou_pools` |
+| Saves, negative actions per post | triggers | `private.post_feed_counters` |
+| Author-written text, full-text indexed | generated column | `post_ai_analysis.author_tsv` |
+| Ranked list per (viewer, seed), with scores | first page | `private.foryou_ranked_lists` (30 days) |
 
-## The trust hierarchy — the heart of it
+## Stages
 
-How "happy to see more" is told apart from a one-off glance or discomfort.
-Implemented in [`sql/02_profiles.sql`](sql/02_profiles.sql):
-
-```
-   save / comment / like ............... trustworthy endorsement → builds interest
-   dwell WITH an action; durable; sought  corroboration / strength
-   dwell ALONE ......................... ambiguous → IGNORED
-   fast-skip / not-interested /
-   open-then-bounce .................... rejection → NEGATIVE profile (steer away)
-```
-
-`Yomi` builds the user model from these: several **interest vectors** (someone
-into fitness *and* finance keeps both, sharp) plus a **negative "avoid" vector**
-that pushes the feed away from what disturbed them.
-
-## Layout
-
-The repo *is* the edge function (Deno / TypeScript), with the Postgres functions
-alongside in `sql/`.
+`Query Hydration → Candidate Sources → Candidate Hydration → Pre-Scoring Filters → Scoring →
+Selection → Post-Selection` — the stage names of X's open-source For You pipeline.
 
 ```
-index.ts       HTTP entry — { user_profile_id, limit?, offset?, seed? } → { post_ids[] }
-kata/          content-filter side
-mushin/        recommendation engine (yomi · signals/ · blend · engine)
-sensei/        orchestrator + hydration
-scoring/       the scorer stack
-filters/       eligibility chain
-selection/     intensity allocation + selection
-lib/           clients · config · shared types
-sql/           the Postgres functions
-  01_hydration.sql   read-through context cache + candidate features
-  02_profiles.sql    taste + negative profiles (the trust hierarchy)
-  03_signals.sql     collaborative · rising · exploration · affinity
+dojo-foryou-v3/
+  index.ts              entry — session paging, store, HTTP
+  sensei/  feedPipeline.ts   assembleFeed — runs the stages
+           retrieval.ts      stages 1-3: context → Pinecone → features
+  kata/    kata.ts           content filters: one query per filter, never averaged
+  mushin/  blend.ts          discovery signals → one normalised score + exploration quota
+  filters/                   the gate (visibility is enforced at the source, in Postgres)
+  scoring/ engagement · negative · seenCooldown · authorDiversity
+  selection/                 intensity → slot shares, weighted round-robin, seeded jitter
+  lib/     clients (Postgres + Pinecone over fetch) · config · types
 ```
 
-## Running it
+## Rules
 
-Targets **Supabase** (Postgres + pgvector, edge functions) and a vector index.
+- **A filter only gets posts about it**: similarity ≥ the topic floor, or the topic named in
+  the author's own words — exactly what its topic tab shows.
+- **One visibility rule** for every source and every page (`private.feed_visible_posts`):
+  public, not dojo-only, not taken down, not an ad, dojo public. Blocks hide in both directions.
+- **Intensity drives allocation, not score.** Filters get slots ∝ intensity.
+- **Quality is Σ value × P(action)**, each P the post's own rate per impression smoothed toward a
+  prior — so 10 likes from 20 views beats 30 from 3,000, and a new post starts at average.
+- **The avoid penalty is relative**: a blend of everything rejected sits near the average post,
+  so only candidates closer to it than most of the set lose score.
+- **Seen is a decaying downrank, not a hard filter** — the feed never empties.
+- **Degrade, don't fail**: a slow Pinecone query drops its source, not the feed.
+- **Transparent scorers now, learned ranker later**: every served list keeps each candidate's
+  score parts; drop a learned `Scorer` into `scoring/` when there is enough to train on.
 
-1. Apply the `sql/` files (expects tables: `posts` with a `post_embedding`
-   vector, `content_filters`, `likes`, `comments`, `saved_posts`,
-   `post_interactions`, `follows`, `dojo_members`, `blocked_users`, `dojos`,
-   `user_foryou_context_cache`).
-2. Deploy this repo as a Supabase edge function (entry `index.ts`) with env:
-   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `PINECONE_API_KEY`,
-   `PINECONE_INDEX_HOST`.
-3. Call it: `{ user_profile_id, limit?, offset?, seed? }` → `{ post_ids[] }`.
+## SQL
 
-Tunables (weights, windows, source mix) live in [`lib/config.ts`](lib/config.ts).
+The Postgres side, in apply order:
 
-## License
+- `sql/01_foundation.sql` — the visibility rule, hidden authors, Yomi's inputs, stored lists
+- `sql/02_precompute_and_requests.sql` — counters, user model, pools, full-text index, and the
+  `foryou_context_v3` / `foryou_features_v3` reads
+- `sql/03_paging_and_topics.sql` — `foryou_page_v3`, `foryou_store_v3`, `foryou_topic_context_v3`
 
-[Apache License 2.0](LICENSE). Copyright 2026 Dojo.
+The function reads `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `PINECONE_API_KEY` and
+`PINECONE_INDEX_HOST` from its environment; no keys live in this repository.
