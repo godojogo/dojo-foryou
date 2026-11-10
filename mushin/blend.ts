@@ -2,16 +2,16 @@
 // mushin (無心, "no-mind") — the behavioural recommendation engine, opt-in per card. It learns
 // from what the user genuinely endorses (not just what they stared at) and flows them toward
 // more of it, plus real discovery. Its signals run in retrieval; this is the blend:
-//   1. normalise each signal to 0..1, weight by CONFIG.mushin.signalWeights
+//   1. normalise each signal to 0..1, weight by cfg().mushin.signalWeights
 //   2. sum into one score per post
 //   3. EXPLORATION QUOTA — guarantee a slice of genuine discovery survives the cap
 // The avoid-vector penalty is a scorer now (it applies to every source, not just Mushin).
 
-import { CONFIG } from '../lib/config.ts';
+import { cfg } from '../lib/config.ts';
 import { Candidate, RawCandidate } from '../lib/types.ts';
 
 export function mushinCandidates(raw: RawCandidate[]): Candidate[] {
-  const weights = CONFIG.mushin.signalWeights as Record<string, number>;
+  const weights = cfg().mushin.signalWeights as Record<string, number>;
 
   const bySignal = new Map<string, RawCandidate[]>();
   for (const c of raw) {
@@ -41,8 +41,8 @@ export function mushinCandidates(raw: RawCandidate[]): Candidate[] {
     .sort((a, b) => b.score - a.score);
 
   // 3: exploration quota — up to N discovery posts survive the cap, the rest by blended score.
-  const out = CONFIG.mushin.outputSize;
-  const quotaN = Math.floor(out * CONFIG.mushin.explorationQuota);
+  const out = cfg().mushin.outputSize;
+  const quotaN = Math.floor(out * cfg().mushin.explorationQuota);
   const exploreTop = ranked.filter((r) => fromExploration.has(r.postId)).slice(0, quotaN);
   const exploreIds = new Set(exploreTop.map((e) => e.postId));
   const mainTop = ranked.filter((r) => !exploreIds.has(r.postId)).slice(0, out - exploreTop.length);

@@ -4,7 +4,7 @@
 // intensity-proportional shares.
 
 import { ScoredCandidate, UserContext } from '../lib/types.ts';
-import { CONFIG } from '../lib/config.ts';
+import { cfg } from '../lib/config.ts';
 import { computeShares, DISCOVERY_KEY, filterKey } from './allocator.ts';
 
 // Deterministic [0,1) from (seed, postId).
@@ -18,7 +18,7 @@ function seededRand(seed: number, key: string): number {
 export function select(scored: ScoredCandidate[], ctx: UserContext, seed: number): string[] {
   if (scored.length === 0) return [];
 
-  for (const s of scored) s.score += CONFIG.jitter * (seededRand(seed, s.postId) - 0.5);
+  for (const s of scored) s.score += cfg().jitter * (seededRand(seed, s.postId) - 0.5);
 
   // Bucket by source: each filter its own bucket, discovery one bucket.
   const buckets = new Map<string, ScoredCandidate[]>();

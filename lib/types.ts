@@ -71,6 +71,8 @@ export interface CandidateFeatures {
   inNetwork: boolean;
   /** Cosine to the viewer's "avoid" vector; null when they have rejected nothing. */
   negativeSimilarity: number | null;
+  /** Learned topic (k-means over post embeddings, private.post_topics); null until assigned. */
+  topic: number | null;
 }
 
 export interface ScoredCandidate extends Candidate {
@@ -78,4 +80,10 @@ export interface ScoredCandidate extends Candidate {
   score: number;
   /** Each scorer's contribution, kept with the served list as training data. */
   parts: Record<string, number>;
+  /**
+   * The raw signals behind the parts, before any weight (similarity, quality, recency, inNetwork,
+   * avoid, seen; each 0..1). Stored with the served list: what a learned ranker fits weights to
+   * (private.fit_foryou_weights), since parts carry whatever weights an experiment ranked with.
+   */
+  signals: Record<string, number>;
 }

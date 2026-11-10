@@ -7,26 +7,23 @@
 // to average, not perfect; 30 likes from 3,000 views ranks below 10 from 20.
 // Intensity is intentionally absent; it drives slot ALLOCATION, not score.
 
-import { CONFIG } from '../lib/config.ts';
+import { cfg } from '../lib/config.ts';
 import { CandidateFeatures } from '../lib/types.ts';
 import { Scorer } from './types.ts';
 
 const HOUR_MS = 3_600_000;
-const E = CONFIG.engagement;
-const A = E.actions;
-
-// What an average post is worth; quality is measured against it.
-const BASELINE =
-  A.like.value * A.like.prior +
-  A.comment.value * A.comment.prior +
-  A.save.value * A.save.prior +
-  A.negative.value * A.negative.prior;
-
-const rate = (count: number, prior: number, impressions: number) =>
-  (count + prior * E.priorImpressions) / (impressions + E.priorImpressions);
-
 // 0..1, 0.5 for an average post.
 export function qualityFactor(f: CandidateFeatures): number {
+  const E = cfg().engagement;
+  const A = E.actions;
+  // What an average post is worth; quality is measured against it.
+  const BASELINE =
+    A.like.value * A.like.prior +
+    A.comment.value * A.comment.prior +
+    A.save.value * A.save.prior +
+    A.negative.value * A.negative.prior;
+  const rate = (count: number, prior: number, impressions: number) =>
+    (count + prior * E.priorImpressions) / (impressions + E.priorImpressions);
   const impressions = Math.max(f.viewCount, f.likesCount + f.commentsCount + f.savesCount + f.negativeCount);
   const value =
     A.like.value * rate(f.likesCount, A.like.prior, impressions) +
@@ -40,15 +37,22 @@ export function qualityFactor(f: CandidateFeatures): number {
 export const engagementScorer: Scorer = {
   name: 'engagement',
   apply(candidates, now) {
-    const w = CONFIG.weights;
+    const w = cfg().weights;
     for (const c of candidates) {
       const ageHours = Math.max(0, (now - new Date(c.features.createdAt).getTime()) / HOUR_MS);
-      const parts = {
-        similarity: w.similarity * c.similarity,
-        quality: w.quality * qualityFactor(c.features),
-        recency: w.recency * Math.exp(-ageHours / CONFIG.recencyTauHours),
-        inNetwork: c.features.inNetwork ? w.inNetwork : 0,
+      const signals = {
+        similarity: c.similarity,
+        quality: qualityFactor(c.features),
+        recency: Math.exp(-ageHours / cfg().recencyTauHours),
+        inNetwork: c.features.inNetwork ? 1 : 0,
       };
+      const parts = {
+        similarity: w.similarity * signals.similarity,
+        quality: w.quality * signals.quality,
+        recency: w.recency * signals.recency,
+        inNetwork: w.inNetwork * signals.inNetwork,
+      };
+      Object.assign(c.signals, signals);
       Object.assign(c.parts, parts);
       c.score += parts.similarity + parts.quality + parts.recency + parts.inNetwork;
     }

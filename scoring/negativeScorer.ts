@@ -4,7 +4,7 @@
 // candidates closer to it than most of this set lose score, scaled from the median (0) to the
 // 95th percentile (full weight).
 
-import { CONFIG } from '../lib/config.ts';
+import { cfg } from '../lib/config.ts';
 import { Scorer } from './types.ts';
 
 function quantile(sorted: number[], q: number): number {
@@ -29,7 +29,9 @@ export const negativeScorer: Scorer = {
     for (const c of candidates) {
       const s = c.features.negativeSimilarity;
       if (s == null || s <= mid) continue;
-      const penalty = CONFIG.negative.weight * Math.min(1, (s - mid) / span);
+      const avoid = Math.min(1, (s - mid) / span);
+      const penalty = cfg().negative.weight * avoid;
+      c.signals.avoid = avoid;
       c.parts.negative = -penalty;
       c.score -= penalty;
     }

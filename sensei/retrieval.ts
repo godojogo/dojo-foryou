@@ -8,10 +8,10 @@
 //   2. Pinecone, one parallel wave: per filter (never an averaged vector) and per interest seed.
 //      A filter keeps only posts about it (the topic floor); hidden authors are excluded inside
 //      the index.
-//   3. foryou_features_v3 (one Postgres read): features for the merged set, under the live
+//   3. foryou_features_v4 (one Postgres read): features for the merged set, under the live
 //      visibility rule — the authoritative gate over Pinecone's copy.
 
-import { CONFIG } from '../lib/config.ts';
+import { cfg } from '../lib/config.ts';
 import { CandidateFeatures, RawCandidate, UserContext } from '../lib/types.ts';
 import { Db, decodeVector, pineconeQuery, RateLimitedError } from '../lib/clients.ts';
 
@@ -57,11 +57,11 @@ export async function retrieve(db: Db, profileId: string): Promise<Retrieved> {
 
   // 2. Vector search, every query in one parallel wave.
   const filterQueries = (context.filters ?? []).map(async (f) => {
-    const matches = await pineconeQuery(decodeVector(f.vector), CONFIG.retrieval.perFilterTopK, hidden);
+    const matches = await pineconeQuery(decodeVector(f.vector), cfg().retrieval.perFilterTopK, hidden);
     return { f, matches };
   });
   const seedQueries = (context.interest_seeds ?? []).map(async (s) => {
-    const matches = await pineconeQuery(decodeVector(s.vector), CONFIG.retrieval.perSeedTopK, hidden);
+    const matches = await pineconeQuery(decodeVector(s.vector), cfg().retrieval.perSeedTopK, hidden);
     return { share: Number(s.share) || 0, matches };
   });
   const [filterResults, seedResults] = await Promise.all([Promise.all(filterQueries), Promise.all(seedQueries)]);
@@ -74,7 +74,7 @@ export async function retrieve(db: Db, profileId: string): Promise<Retrieved> {
     const sims = new Map<string, number>();
     for (const m of matches) {
       sims.set(m.id, m.score);
-      if (m.score >= CONFIG.retrieval.topicFloor) {
+      if (m.score >= cfg().retrieval.topicFloor) {
         candidates.push({ postId: m.id, source: 'filter', filterId: String(f.id), intensity: Number(f.intensity) || 0, score: m.score });
       }
     }
@@ -82,7 +82,7 @@ export async function retrieve(db: Db, profileId: string): Promise<Retrieved> {
   }
   for (const c of candidates) {
     if (c.source === 'filter' && Number.isNaN(c.score)) {
-      c.score = simByFilter.get(c.filterId!)?.get(c.postId) ?? CONFIG.retrieval.topicFloor;
+      c.score = simByFilter.get(c.filterId!)?.get(c.postId) ?? cfg().retrieval.topicFloor;
     }
   }
 
@@ -107,7 +107,7 @@ async function hydrateFeatures(db: Db, profileId: string, candidates: RawCandida
   const ids = [...new Set(candidates.map((c) => c.postId))];
   const features = new Map<string, CandidateFeatures>();
   if (ids.length === 0) return features;
-  const rows = await db.rpc<Row[]>('foryou_features_v3', { p_profile_id: profileId, p_post_ids: ids });
+  const rows = await db.rpc<Row[]>('foryou_features_v4', { p_profile_id: profileId, p_post_ids: ids });
   for (const r of rows ?? []) {
     const postId = String(r.post_id);
     features.set(postId, {
@@ -122,6 +122,7 @@ async function hydrateFeatures(db: Db, profileId: string, candidates: RawCandida
       lastSeenAt: (r.last_seen_at as string) ?? null,
       inNetwork: Boolean(r.in_network),
       negativeSimilarity: r.negative_similarity == null ? null : Number(r.negative_similarity),
+      topic: r.topic == null ? null : Number(r.topic),
     });
   }
   return features;
@@ -142,7 +143,7 @@ interface TopicContextRow {
  */
 export async function retrieveTopic(db: Db, profileId: string, topic: string): Promise<Retrieved> {
   const context = await db.rpc<TopicContextRow>('foryou_topic_context_v3', {
-    p_profile_id: profileId, p_topic: topic, p_limit: CONFIG.retrieval.topicTopK,
+    p_profile_id: profileId, p_topic: topic, p_limit: cfg().retrieval.topicTopK,
   });
   if (context?.error === 'rate_limited') throw new RateLimitedError('rate_limited');
 
@@ -158,19 +159,19 @@ export async function retrieveTopic(db: Db, profileId: string, topic: string): P
   const sims = new Map<string, number>();
   if (context.vector) {
     const matches = await pineconeQuery(
-      decodeVector(context.vector), CONFIG.retrieval.topicTopK, (context.hidden_authors ?? []).map(String));
+      decodeVector(context.vector), cfg().retrieval.topicTopK, (context.hidden_authors ?? []).map(String));
     for (const m of matches) sims.set(m.id, m.score);
   }
 
   const candidates: RawCandidate[] = [];
   for (const [postId, score] of sims) {
-    if (score >= CONFIG.retrieval.topicFloor) {
+    if (score >= cfg().retrieval.topicFloor) {
       candidates.push({ postId, source: 'filter', filterId, intensity: 1, score });
     }
   }
   for (const id of context.named ?? []) {
     const postId = String(id);
-    candidates.push({ postId, source: 'filter', filterId, intensity: 1, score: sims.get(postId) ?? CONFIG.retrieval.topicFloor });
+    candidates.push({ postId, source: 'filter', filterId, intensity: 1, score: sims.get(postId) ?? cfg().retrieval.topicFloor });
   }
 
   const features = await hydrateFeatures(db, profileId, candidates);

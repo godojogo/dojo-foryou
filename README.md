@@ -13,9 +13,11 @@ Same request/response as v2: `{ user_profile_id, limit?, offset?, seed?, exclude
 ```
 first page of a session (new seed)                    later pages (same seed)
 ──────────────────────────────────                    ───────────────────────
-foryou_context_v3        one Postgres read            foryou_page_v3   one Postgres read:
+foryou_context_v3        one Postgres read            foryou_page_v4   one Postgres read:
   viewer · filters + vectors · toggles · hidden          the stored order, visibility gate
-  Yomi's precomputed interest seeds                      re-applied, exclusions, one slice
+  Yomi's precomputed interest seeds                      re-applied, exclusions, one slice,
+                                                         minus what was marked not interested
+                                                         this session (+ its author, look-alikes)
   SQL sources: topic-named (full-text index),
   rising + exploration (pools), affinity,
   collaborative (precomputed neighbours)
@@ -43,6 +45,16 @@ vector search scales out in Pinecone, and everything expensive is precomputed �
 | Saves, negative actions per post | triggers | `private.post_feed_counters` |
 | Author-written text, full-text indexed | generated column | `post_ai_analysis.author_tsv` |
 | Ranked list per (viewer, seed), with scores | first page | `private.foryou_ranked_lists` (30 days) |
+
+## Experiments
+
+A/B tests change the ranking's config for a share of viewers, with no deploy: a row in
+`private.foryou_experiments` lists variants, each a set of overrides on `lib/config.ts` (e.g.
+`{"weights": {"quality": 0.6}}`). A viewer's variant is a hash of the experiment key and their
+profile, so it's stable. Each request ranks in its own config scope (`cfg()`), and the stored
+list records the variants. `foryou_experiment_results_v1(key)` (admin; the dashboard's Feed
+Experiments panel) compares them on what viewers did with what they were served: views, dwell,
+likes / comments / saves / not-interested per 100 views, with a 95% interval on the like rate.
 
 ## Stages
 
@@ -77,15 +89,3 @@ dojo-foryou-v3/
 - **Degrade, don't fail**: a slow Pinecone query drops its source, not the feed.
 - **Transparent scorers now, learned ranker later**: every served list keeps each candidate's
   score parts; drop a learned `Scorer` into `scoring/` when there is enough to train on.
-
-## SQL
-
-The Postgres side, in apply order:
-
-- `sql/01_foundation.sql` — the visibility rule, hidden authors, Yomi's inputs, stored lists
-- `sql/02_precompute_and_requests.sql` — counters, user model, pools, full-text index, and the
-  `foryou_context_v3` / `foryou_features_v3` reads
-- `sql/03_paging_and_topics.sql` — `foryou_page_v3`, `foryou_store_v3`, `foryou_topic_context_v3`
-
-The function reads `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `PINECONE_API_KEY` and
-`PINECONE_INDEX_HOST` from its environment; no keys live in this repository.

@@ -1,9 +1,9 @@
 // Allocator — turns intensity into feed composition. Each content filter gets a
 // share of slots ∝ its intensity; discovery (when either source card is on) claims
-// CONFIG.discoveryShare and filters split the rest. This is where the sliders literally
+// cfg().discoveryShare and filters split the rest. This is where the sliders literally
 // shape the feed.
 
-import { CONFIG } from '../lib/config.ts';
+import { cfg } from '../lib/config.ts';
 import { UserContext, anySourceOn } from '../lib/types.ts';
 
 export const DISCOVERY_KEY = '__discovery__';
@@ -13,7 +13,7 @@ export const filterKey = (filterId?: string) => `f:${filterId}`;
 //
 // Composition rules:
 //   - filters only            -> 100% split across filters by intensity
-//   - filters + discovery on  -> discovery takes CONFIG.discoveryShare,
+//   - filters + discovery on  -> discovery takes cfg().discoveryShare,
 //                                filters split the remainder by intensity
 //   - NO filters + discovery on -> 100% discovery (pure discovery feed)
 //
@@ -25,7 +25,7 @@ export function computeShares(ctx: UserContext, presentKeys: Set<string>): Map<s
   const discoveryOn = anySourceOn(ctx);
 
   // With no content filters, discovery owns the whole feed.
-  const recommendShare = !hasFilters ? 1 : CONFIG.discoveryShare;
+  const recommendShare = !hasFilters ? 1 : cfg().discoveryShare;
   const filterTotal = discoveryOn ? 1 - recommendShare : 1;
   const intensitySum = ctx.filters.reduce((s, f) => s + f.intensity, 0) || 1;
 

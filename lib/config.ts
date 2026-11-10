@@ -1,5 +1,10 @@
 // All tunables in one place: ranking behaviour is legible and adjustable here, not buried in
 // logic. The SQL sources' sizes and windows live in foryou_context_v3 and the pool refresh.
+//
+// These are the defaults. A request ranks with `cfg()`: the defaults with the viewer's experiment
+// variants applied (lib/experiments.ts), scoped to that request.
+
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 export const CONFIG = {
   // ── Vector retrieval (Pinecone) ──────────────────────────────────────
@@ -57,6 +62,9 @@ export const CONFIG = {
   },
 
   authorDiversityDecay: 0.5,
+  // Each further post on a topic already ranked above keeps this share of its score: gentler
+  // than authors, since a viewer's filter is itself a topic and should still fill its slots.
+  topicDiversityDecay: 0.8,
 
   // ── Mushin blend ─────────────────────────────────────────────────────
   mushin: {
@@ -76,3 +84,34 @@ export const CONFIG = {
   // Seeded jitter so a new session reorders near-ties without overturning clear winners.
   jitter: 0.04,
 } as const;
+
+export type Config = typeof CONFIG;
+
+const scope = new AsyncLocalStorage<Config>();
+
+/** The config this request ranks with. */
+export const cfg = (): Config => scope.getStore() ?? CONFIG;
+
+/** Run `fn` (and everything it awaits) with `config`. */
+export const withConfig = <T>(config: Config, fn: () => T): T => scope.run(config, fn);
+
+type Plain = Record<string, unknown>;
+const isPlain = (v: unknown): v is Plain => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * `base` with `overrides` merged in: objects key by key, anything else replaced. Only keys `base`
+ * already has are taken, with the same kind of value, so a typo in an experiment can't add a
+ * setting or turn a number into a string.
+ */
+export function mergeConfig(base: Config, overrides: Plain): Config {
+  const merge = (b: Plain, o: Plain): Plain => {
+    const out: Plain = { ...b };
+    for (const [k, v] of Object.entries(o)) {
+      if (!(k in b)) continue;
+      if (isPlain(b[k]) && isPlain(v)) out[k] = merge(b[k] as Plain, v);
+      else if (typeof v === typeof b[k]) out[k] = v;
+    }
+    return out;
+  };
+  return merge(base as unknown as Plain, overrides) as unknown as Config;
+}

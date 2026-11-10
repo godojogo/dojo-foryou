@@ -6,10 +6,13 @@
 //
 // Rank once per (viewer, seed), page from the stored order. The first page runs the pipeline:
 // one Postgres read, one parallel wave of Pinecone queries, one Postgres read, ranking here.
-// Every later page is one indexed read that re-applies the visibility gate. A client keeps one
-// seed per feed session and picks a new one to refresh. See README.md for the stages.
+// Every later page is one indexed read that re-applies the visibility gate and drops what the
+// viewer marked not interested during the session (foryou_page_v4). A client keeps one seed per
+// feed session and picks a new one to refresh. See README.md for the stages.
 
 import { callerDb, ForbiddenError, RateLimitedError } from './lib/clients.ts';
+import { withConfig } from './lib/config.ts';
+import { assign } from './lib/experiments.ts';
 import { FeedRequest } from './lib/types.ts';
 import { assembleFeed, assembleTopicFeed } from './sensei/feedPipeline.ts';
 
@@ -67,10 +70,14 @@ Deno.serve(async (req) => {
 
     const db = callerDb(accessToken);
 
-    // A list already ranked for this session: one read.
-    const stored = await db.rpc<StoredPage | null>('foryou_page_v3', {
-      p_profile_id: profileId, p_feed: feed, p_seed: seed, p_offset: offset, p_limit: limit, p_exclude: exclude,
-    });
+    // A list already ranked for this session: one read. The viewer's experiment variants are
+    // looked up alongside (cached per instance, so usually no call at all).
+    const [stored, assignment] = await Promise.all([
+      db.rpc<StoredPage | null>('foryou_page_v4', {
+        p_profile_id: profileId, p_feed: feed, p_seed: seed, p_offset: offset, p_limit: limit, p_exclude: exclude,
+      }),
+      assign(db, profileId),
+    ]);
     if (stored) {
       return json({
         post_ids: stored.post_ids,
@@ -80,9 +87,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { postIds, scored, meta } = topic
-      ? await assembleTopicFeed(db, profileId, topic, seed)
-      : await assembleFeed(db, profileId, seed);
+    const ranked = await withConfig(assignment.config, () =>
+      topic ? assembleTopicFeed(db, profileId, topic, seed) : assembleFeed(db, profileId, seed));
+    const { postIds, scored } = ranked;
+    const meta = { ...ranked.meta, experiments: assignment.arms };
 
     // Store the order, with what produced it (training data for a learned ranker), for the
     // session's later pages — off the response path; a failed store only means a re-rank.
@@ -94,7 +102,7 @@ Deno.serve(async (req) => {
       p_post_ids: postIds,
       p_scores: postIds.map((id) => {
         const s = byId.get(id)!;
-        return { id, source: s.source, filter: s.filterId ?? null, score: s.score, parts: s.parts };
+        return { id, source: s.source, filter: s.filterId ?? null, score: s.score, parts: s.parts, signals: s.signals };
       }),
       p_meta: meta,
     }).catch((e) => console.warn('foryou_store_v3 failed:', (e as Error).message));

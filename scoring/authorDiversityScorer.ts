@@ -3,7 +3,7 @@
 // feed. Sorts by current score first to establish "above", then ×decay^n per
 // repeat.
 
-import { CONFIG } from '../lib/config.ts';
+import { cfg } from '../lib/config.ts';
 import { Scorer } from './types.ts';
 
 export const authorDiversityScorer: Scorer = {
@@ -15,7 +15,7 @@ export const authorDiversityScorer: Scorer = {
       const n = countByAuthor.get(c.features.authorId) ?? 0;
       if (n > 0) {
         // Attenuate toward zero from either side: a repeat must never gain from a negative score.
-        const factor = Math.pow(CONFIG.authorDiversityDecay, n);
+        const factor = Math.pow(cfg().authorDiversityDecay, n);
         const next = c.score >= 0 ? c.score * factor : c.score / factor;
         c.parts.authorRepeat = next - c.score;
         c.score = next;
