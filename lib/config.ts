@@ -18,6 +18,18 @@ export const CONFIG = {
     topicFloor: 0.40,
   },
 
+  // ── Relevance calibration (experiment: relevance_calibration) ───────
+  // A filter's matches sit in a narrow cosine band (5th-95th percentile 0.31-0.47 on served
+  // lists), so raw similarity moved a score by ~0.1 while quality moved it by 0.35 and the seen
+  // penalty by 1.2: the best match and a borderline one ranked alike. Calibrated, a filter post's
+  // relevance is its cosine mapped from [low, high] onto 0..1, the scale discovery's blended
+  // score is already on. Off by default; the raw cosine is still recorded as the signal.
+  relevance: {
+    calibrate: false,
+    low: 0.30,
+    high: 0.50,
+  },
+
   // ── Source mix ───────────────────────────────────────────────────────
   // When either discovery card is ON, discovery claims this share of the feed; the rest is
   // split across content filters by intensity.

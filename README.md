@@ -80,12 +80,26 @@ dojo-foryou-v3/
   the author's own words — exactly what its topic tab shows.
 - **One visibility rule** for every source and every page (`private.feed_visible_posts`):
   public, not dojo-only, not taken down, not an ad, dojo public. Blocks hide in both directions.
-- **Intensity drives allocation, not score.** Filters get slots ∝ intensity.
+- **Intensity drives allocation, not score.** Filters get slots ∝ intensity, within
+  `shareSlack` slots: each slot goes to the best next post among the filters near their share.
+- **Tiers before shares**: unseen posts scoring ≥ `qualityFloor`, then weaker unseen ones, then
+  posts seen in the last day (dropped while a page of unseen posts remains). `meta.unseen` says
+  how many lead.
 - **Quality is Σ value × P(action)**, each P the post's own rate per impression smoothed toward a
   prior — so 10 likes from 20 views beats 30 from 3,000, and a new post starts at average.
 - **The avoid penalty is relative**: a blend of everything rejected sits near the average post,
   so only candidates closer to it than most of the set lose score.
-- **Seen is a decaying downrank, not a hard filter** — the feed never empties.
+- **Seen fades**: past the last day, a seen post is downranked (decaying over `seen.windowDays`),
+  not removed, so the feed never empties and good posts resurface.
+- **Repeat penalties are bounded**: an author's or topic's n-th post loses (1 - decay^n) of its
+  score, measured against at least `diversityFloor`, whatever the score's sign.
 - **Degrade, don't fail**: a slow Pinecone query drops its source, not the feed.
 - **Transparent scorers now, learned ranker later**: every served list keeps each candidate's
   score parts; drop a learned `Scorer` into `scoring/` when there is enough to train on.
+
+## Tests
+
+`npx tsx --test tests/ranking.test.ts` (from this folder; Node's runner, no Deno needed). The
+scoring and selection stages on a real served list (`tests/fixture.ts`): just-seen posts left out,
+bounded penalties, quality tiers, the filter mix within the slack, relevance calibration, and
+experiment overrides. The tests folder is never imported by the function, so it is not deployed.

@@ -46,13 +46,19 @@ export const engagementScorer: Scorer = {
         recency: Math.exp(-ageHours / cfg().recencyTauHours),
         inNetwork: c.features.inNetwork ? 1 : 0,
       };
+      // Calibrated relevance is always recorded (so a fit can compare it with the raw cosine);
+      // it scores only when the relevance_calibration experiment turns it on.
+      const R = cfg().relevance;
+      const relevance = c.source === 'filter'
+        ? Math.min(1, Math.max(0, (c.similarity - R.low) / (R.high - R.low)))
+        : c.similarity;
       const parts = {
-        similarity: w.similarity * signals.similarity,
+        similarity: w.similarity * (R.calibrate ? relevance : signals.similarity),
         quality: w.quality * signals.quality,
         recency: w.recency * signals.recency,
         inNetwork: w.inNetwork * signals.inNetwork,
       };
-      Object.assign(c.signals, signals);
+      Object.assign(c.signals, signals, { relevance });
       Object.assign(c.parts, parts);
       c.score += parts.similarity + parts.quality + parts.recency + parts.inNetwork;
     }
