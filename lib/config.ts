@@ -55,13 +55,22 @@ export const CONFIG = {
   },
 
   // ── Seen cooldown (decaying downrank, NOT a hard filter) ─────────────
+  // On top of the downrank, posts seen in the last `freshHours` are taken out of the running
+  // order: dropped when at least `excludeWhenUnseen` (a page) of unseen posts remain, otherwise
+  // placed after every unseen post ("you're all caught up"), so a seen post can't take one of a
+  // filter's top slots. Past `freshHours` only the decaying downrank applies, so good posts resurface.
   seen: {
     weight: 1.2,
     tauDays: 4,
     windowDays: 10,
+    freshHours: 24,
+    excludeWhenUnseen: 30,
   },
 
   authorDiversityDecay: 0.5,
+  // A repeat's diversity penalty is measured against at least this score (about a weak post's),
+  // so posts at or below zero still move down, by a bounded amount (scoring/types.ts repeatPenalty).
+  diversityFloor: 0.25,
   // Each further post on a topic already ranked above keeps this share of its score: gentler
   // than authors, since a viewer's filter is itself a topic and should still fill its slots.
   topicDiversityDecay: 0.8,
@@ -80,6 +89,13 @@ export const CONFIG = {
       affinity: 0.6,
     },
   },
+
+  // How far (in slots) a source may run ahead of or behind its share so the better post can go
+  // first. 0 is a strict quota rotation; larger trades the slider mix for quality.
+  shareSlack: 1,
+  // Posts scoring below this (similar to what the viewer rejected, weak and unengaged) follow
+  // every post at or above it, whatever their filter's share.
+  qualityFloor: 0,
 
   // Seeded jitter so a new session reorders near-ties without overturning clear winners.
   jitter: 0.04,

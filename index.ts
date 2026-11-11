@@ -7,7 +7,7 @@
 // Rank once per (viewer, seed), page from the stored order. The first page runs the pipeline:
 // one Postgres read, one parallel wave of Pinecone queries, one Postgres read, ranking here.
 // Every later page is one indexed read that re-applies the visibility gate and drops what the
-// viewer marked not interested during the session (foryou_page_v4). A client keeps one seed per
+// viewer marked not interested during the session (foryou_page_v5; the list lasts the session). A client keeps one seed per
 // feed session and picks a new one to refresh. See README.md for the stages.
 
 import { callerDb, ForbiddenError, RateLimitedError } from './lib/clients.ts';
@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
     // A list already ranked for this session: one read. The viewer's experiment variants are
     // looked up alongside (cached per instance, so usually no call at all).
     const [stored, assignment] = await Promise.all([
-      db.rpc<StoredPage | null>('foryou_page_v4', {
+      db.rpc<StoredPage | null>('foryou_page_v5', {
         p_profile_id: profileId, p_feed: feed, p_seed: seed, p_offset: offset, p_limit: limit, p_exclude: exclude,
       }),
       assign(db, profileId),

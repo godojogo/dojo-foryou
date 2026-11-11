@@ -24,6 +24,9 @@ export interface FeedResult {
     interestSeeds: number;
     candidates: number;
     eligible: number;
+    /** Leading posts not seen in the last day; the rest are "caught up". */
+    unseen: number;
+    seenDropped: number;
   };
 }
 
@@ -51,7 +54,7 @@ export async function assembleTopicFeed(db: Db, profileId: string, topic: string
 
 function rank({ ctx, candidates: raw, features }: Retrieved, seed: number): FeedResult {
   const empty = { filters: ctx.filters.length, trendingOn: ctx.trendingOn, recommendOn: ctx.recommendOn,
-    interestSeeds: ctx.interestSeeds, candidates: 0, eligible: 0 };
+    interestSeeds: ctx.interestSeeds, candidates: 0, eligible: 0, unseen: 0, seenDropped: 0 };
   if (ctx.filters.length === 0 && !anySourceOn(ctx)) return { postIds: [], scored: [], meta: empty };
 
   const candidates = merge([kataCandidates(raw), anySourceOn(ctx) ? mushinCandidates(raw) : []]);
@@ -62,11 +65,11 @@ function rank({ ctx, candidates: raw, features }: Retrieved, seed: number): Feed
   // 5. Scoring (the judge)
   const scored = runScorers(eligible, features);
 
-  // 6. Selection (intensity allocation + seeded jitter)
-  const ordered = select(scored, ctx, seed);
+  // 6. Selection (seen-in-the-last-day split, intensity allocation, seeded jitter)
+  const { postIds: ordered, unseen, seenDropped } = select(scored, ctx, seed);
 
   // 7. Post-Selection (dedupe; the visibility gate re-runs on every page read)
   const postIds = dedupe(ordered);
 
-  return { postIds, scored, meta: { ...empty, candidates: candidates.length, eligible: eligible.length } };
+  return { postIds, scored, meta: { ...empty, candidates: candidates.length, eligible: eligible.length, unseen, seenDropped } };
 }

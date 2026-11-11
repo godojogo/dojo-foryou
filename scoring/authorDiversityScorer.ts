@@ -4,7 +4,7 @@
 // repeat.
 
 import { cfg } from '../lib/config.ts';
-import { Scorer } from './types.ts';
+import { repeatPenalty, Scorer } from './types.ts';
 
 export const authorDiversityScorer: Scorer = {
   name: 'authorDiversity',
@@ -14,11 +14,9 @@ export const authorDiversityScorer: Scorer = {
     for (const c of candidates) {
       const n = countByAuthor.get(c.features.authorId) ?? 0;
       if (n > 0) {
-        // Attenuate toward zero from either side: a repeat must never gain from a negative score.
-        const factor = Math.pow(cfg().authorDiversityDecay, n);
-        const next = c.score >= 0 ? c.score * factor : c.score / factor;
-        c.parts.authorRepeat = next - c.score;
-        c.score = next;
+        const penalty = repeatPenalty(c.score, Math.pow(cfg().authorDiversityDecay, n), cfg().diversityFloor);
+        c.parts.authorRepeat = -penalty;
+        c.score -= penalty;
       }
       countByAuthor.set(c.features.authorId, n + 1);
     }

@@ -4,7 +4,7 @@
 // scorer, gentler decay; a post without a topic yet is left alone.
 
 import { cfg } from '../lib/config.ts';
-import { Scorer } from './types.ts';
+import { repeatPenalty, Scorer } from './types.ts';
 
 export const topicDiversityScorer: Scorer = {
   name: 'topicDiversity',
@@ -16,11 +16,9 @@ export const topicDiversityScorer: Scorer = {
       if (topic == null) continue;
       const n = countByTopic.get(topic) ?? 0;
       if (n > 0) {
-        // Attenuate toward zero from either side: a repeat must never gain from a negative score.
-        const factor = Math.pow(cfg().topicDiversityDecay, n);
-        const next = c.score >= 0 ? c.score * factor : c.score / factor;
-        c.parts.topicRepeat = next - c.score;
-        c.score = next;
+        const penalty = repeatPenalty(c.score, Math.pow(cfg().topicDiversityDecay, n), cfg().diversityFloor);
+        c.parts.topicRepeat = -penalty;
+        c.score -= penalty;
       }
       countByTopic.set(topic, n + 1);
     }
