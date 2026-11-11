@@ -96,10 +96,3 @@ dojo-foryou-v3/
 - **Degrade, don't fail**: a slow Pinecone query drops its source, not the feed.
 - **Transparent scorers now, learned ranker later**: every served list keeps each candidate's
   score parts; drop a learned `Scorer` into `scoring/` when there is enough to train on.
-
-## Tests
-
-`npx tsx --test tests/ranking.test.ts` (from this folder; Node's runner, no Deno needed). The
-scoring and selection stages on a real served list (`tests/fixture.ts`): just-seen posts left out,
-bounded penalties, quality tiers, the filter mix within the slack, relevance calibration, and
-experiment overrides. The tests folder is never imported by the function, so it is not deployed.
