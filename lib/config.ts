@@ -59,6 +59,15 @@ export const CONFIG = {
 
   recencyTauHours: 72,
 
+  // ── Contention (valued interactions, not reactions) ──────────────────
+  // A post that divides people (replies out of proportion to approval, regret per view) loses
+  // `weight` x contention, and its comments count toward quality only in proportion to how calm
+  // it is: replies are what divisive posts generate most, so counting them at face value is the
+  // "meaningful social interactions" mistake. The weekly fit proposes its own weight.
+  contention: {
+    weight: 0.3,
+  },
+
   // ── Avoid vector (the "I looked but it made me uncomfortable" defence) ──
   // Relative, not absolute: a blend of everything rejected sits close to the average post, so
   // only candidates nearer to it than most of the others are pushed down.

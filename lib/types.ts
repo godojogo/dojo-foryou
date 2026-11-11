@@ -73,6 +73,11 @@ export interface CandidateFeatures {
   negativeSimilarity: number | null;
   /** Learned topic (k-means over post embeddings, private.post_topics); null until assigned. */
   topic: number | null;
+  /**
+   * 0..1, how much the post divides people rather than pleases them (private.post_contention):
+   * replies out of proportion to approval, and regret (not interested / hide / report) per view.
+   */
+  contention: number;
 }
 
 export interface ScoredCandidate extends Candidate {

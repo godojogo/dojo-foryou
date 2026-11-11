@@ -87,6 +87,13 @@ dojo-foryou-v3/
   how many lead.
 - **Quality is Σ value × P(action)**, each P the post's own rate per impression smoothed toward a
   prior — so 10 likes from 20 views beats 30 from 3,000, and a new post starts at average.
+- **Valued, not reacted to.** The learner's target is endorsement (like, save, share, follow; a
+  comment only on a calm post) against regret (not interested, hide, report, block), never
+  attention. Dwell is read in context: relative to how long the post takes and to the viewer's
+  usual, a long look counts (weakly) only on a calm post and is left out on a contentious one
+  (`private.foryou_training_examples_v2`). A post that divides people loses
+  `contention.weight` x contention and its comments add quality only in proportion to how calm
+  it is: replies are what divisive posts generate most.
 - **The avoid penalty is relative**: a blend of everything rejected sits near the average post,
   so only candidates closer to it than most of the set lose score.
 - **Seen fades**: past the last day, a seen post is downranked (decaying over `seen.windowDays`),

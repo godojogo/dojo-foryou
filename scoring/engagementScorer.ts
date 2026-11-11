@@ -6,6 +6,10 @@
 // swing it: P = (count + prior·k) / (impressions + k). A post with 1 like from 1 view is close
 // to average, not perfect; 30 likes from 3,000 views ranks below 10 from 20.
 // Intensity is intentionally absent; it drives slot ALLOCATION, not score.
+//
+// Comments count toward quality in proportion to how calm the post is (1 - contention), and a
+// contentious post loses cfg().contention.weight x contention: what people value, not what they
+// react to.
 
 import { cfg } from '../lib/config.ts';
 import { CandidateFeatures } from '../lib/types.ts';
@@ -27,7 +31,7 @@ export function qualityFactor(f: CandidateFeatures): number {
   const impressions = Math.max(f.viewCount, f.likesCount + f.commentsCount + f.savesCount + f.negativeCount);
   const value =
     A.like.value * rate(f.likesCount, A.like.prior, impressions) +
-    A.comment.value * rate(f.commentsCount, A.comment.prior, impressions) +
+    A.comment.value * (1 - (f.contention ?? 0)) * rate(f.commentsCount, A.comment.prior, impressions) +
     A.save.value * rate(f.savesCount, A.save.prior, impressions) +
     A.negative.value * rate(f.negativeCount, A.negative.prior, impressions);
   const relative = Math.max(0, value) / BASELINE;
@@ -45,6 +49,7 @@ export const engagementScorer: Scorer = {
         quality: qualityFactor(c.features),
         recency: Math.exp(-ageHours / cfg().recencyTauHours),
         inNetwork: c.features.inNetwork ? 1 : 0,
+        contention: c.features.contention ?? 0,
       };
       // Calibrated relevance is always recorded (so a fit can compare it with the raw cosine);
       // it scores only when the relevance_calibration experiment turns it on.
@@ -57,10 +62,11 @@ export const engagementScorer: Scorer = {
         quality: w.quality * signals.quality,
         recency: w.recency * signals.recency,
         inNetwork: w.inNetwork * signals.inNetwork,
+        contention: -cfg().contention.weight * signals.contention,
       };
       Object.assign(c.signals, signals, { relevance });
       Object.assign(c.parts, parts);
-      c.score += parts.similarity + parts.quality + parts.recency + parts.inNetwork;
+      c.score += parts.similarity + parts.quality + parts.recency + parts.inNetwork + parts.contention;
     }
   },
 };

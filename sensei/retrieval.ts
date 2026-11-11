@@ -107,7 +107,7 @@ async function hydrateFeatures(db: Db, profileId: string, candidates: RawCandida
   const ids = [...new Set(candidates.map((c) => c.postId))];
   const features = new Map<string, CandidateFeatures>();
   if (ids.length === 0) return features;
-  const rows = await db.rpc<Row[]>('foryou_features_v4', { p_profile_id: profileId, p_post_ids: ids });
+  const rows = await db.rpc<Row[]>('foryou_features_v5', { p_profile_id: profileId, p_post_ids: ids });
   for (const r of rows ?? []) {
     const postId = String(r.post_id);
     features.set(postId, {
@@ -123,6 +123,7 @@ async function hydrateFeatures(db: Db, profileId: string, candidates: RawCandida
       inNetwork: Boolean(r.in_network),
       negativeSimilarity: r.negative_similarity == null ? null : Number(r.negative_similarity),
       topic: r.topic == null ? null : Number(r.topic),
+      contention: Number(r.contention) || 0,
     });
   }
   return features;
