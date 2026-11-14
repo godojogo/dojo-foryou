@@ -59,6 +59,18 @@ export const CONFIG = {
 
   recencyTauHours: 72,
 
+  // ── First audience (exploration) ─────────────────────────────────────
+  // A new post has almost no views, so its quality is only the prior: shown by luck or not at
+  // all, it never earns a real signal and new creators stay invisible. A recent, on-topic post
+  // gets weight x priorViews / (views + priorViews): full at 0 views, half at 20, fading as it
+  // collects them, and none past maxAgeDays. It decides who gets a first look, not what is
+  // rewarded; the learner's target is still what people valued.
+  explore: {
+    weight: 0.15,
+    priorViews: 20,
+    maxAgeDays: 7,
+  },
+
   // ── Contention (valued interactions, not reactions) ──────────────────
   // A post that divides people (replies out of proportion to approval, regret per view) loses
   // `weight` x contention, and its comments count toward quality only in proportion to how calm

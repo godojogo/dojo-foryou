@@ -5,14 +5,14 @@
 
 import { Candidate, CandidateFeatures, ScoredCandidate } from '../lib/types.ts';
 import { Scorer } from './types.ts';
-import { engagementScorer } from './engagementScorer.ts';
+import { foundation } from '../foundation/foundation.ts';
 import { negativeScorer } from './negativeScorer.ts';
 import { steeringScorer } from './steeringScorer.ts';
 import { seenCooldownScorer } from './seenCooldownScorer.ts';
 import { authorDiversityScorer } from './authorDiversityScorer.ts';
 import { topicDiversityScorer } from './topicDiversityScorer.ts';
 
-export const SCORERS: Scorer[] = [engagementScorer, negativeScorer, steeringScorer, seenCooldownScorer, authorDiversityScorer, topicDiversityScorer];
+export const SCORERS: Scorer[] = [foundation, negativeScorer, steeringScorer, seenCooldownScorer, authorDiversityScorer, topicDiversityScorer];
 
 export function runScorers(
   candidates: Candidate[],

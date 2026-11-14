@@ -1,4 +1,4 @@
-// Allocator — turns intensity into feed composition. Each content filter gets a
+// Mixer: shares — turns intensity into feed composition. Each content filter gets a
 // share of slots ∝ its intensity; discovery (when either source card is on) claims
 // cfg().discoveryShare and filters split the rest. This is where the sliders literally
 // shape the feed.

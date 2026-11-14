@@ -34,7 +34,7 @@ const json = (body: unknown, status = 200) =>
 const normId = (value: unknown) => String(value ?? '').trim().toLowerCase();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-// Any number the client sends → a stable unsigned 32-bit key. The selector's jitter uses 32 bits,
+// Any number the client sends → a stable unsigned 32-bit key. The Mixer's jitter uses 32 bits,
 // and an Int64 from Swift would lose precision as a JS number, so fold it first.
 const seedKey = (seed: unknown): number => {
   const n = Number(seed);

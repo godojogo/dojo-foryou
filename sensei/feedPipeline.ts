@@ -13,7 +13,7 @@ import { kataCandidates } from '../kata/kata.ts';
 import { mushinCandidates } from '../mushin/blend.ts';
 import { applyPreScoringFilters } from '../filters/chain.ts';
 import { runScorers } from '../scoring/stack.ts';
-import { select } from '../selection/selector.ts';
+import { mix } from '../mixer/mixer.ts';
 import { dedupe } from '../filters/dedupeFilter.ts';
 
 export interface FeedResult {
@@ -35,7 +35,7 @@ export interface FeedResult {
 }
 
 // A post found by several sources keeps the strongest (similarity·intensity) provenance, so the
-// allocator assigns it to the source that "wanted" it most.
+// Mixer assigns it to the source that "wanted" it most.
 function merge(lists: Candidate[][]): Candidate[] {
   const best = new Map<string, Candidate>();
   for (const c of lists.flat()) {
@@ -72,13 +72,13 @@ function rank({ ctx, candidates: raw, features }: Retrieved, seed: number): Feed
   // 4. Pre-Scoring Filters (the gate)
   const eligible = applyPreScoringFilters(candidates, features, ctx);
 
-  // 5. Scoring (the judge)
+  // 5. Scoring: the Foundation score, then its adjustments (the judge)
   const scored = runScorers(eligible, features);
 
-  // 6. Selection (seen-in-the-last-day split, intensity allocation, seeded jitter)
-  const { postIds: ordered, unseen, seenDropped } = select(scored, ctx, seed);
+  // 6. Mixer (seen-in-the-last-day split, quality tiers, intensity shares, seeded jitter)
+  const { postIds: ordered, unseen, seenDropped } = mix(scored, ctx, seed);
 
-  // 7. Post-Selection (dedupe; the visibility gate re-runs on every page read)
+  // 7. Post-mix (dedupe; the visibility gate re-runs on every page read)
   const postIds = dedupe(ordered);
 
   return { postIds, scored, meta: { ...empty, candidates: candidates.length, eligible: eligible.length, unseen, seenDropped } };

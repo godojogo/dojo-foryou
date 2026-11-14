@@ -1,6 +1,7 @@
-// Selector — produces the final ordered post IDs. Applies a light seeded jitter
+// ─── MIXER ───────────────────────────────────────────────────────────────────
+// Turns the scored candidates into the feed's order. Applies a light seeded jitter
 // (so refreshes vary without overturning clear winners), buckets candidates by
-// source, then fills slots via weighted round-robin to hit the allocator's
+// source, then fills slots via weighted round-robin to hit the shares (allocator.ts):
 // intensity-proportional shares. The order comes in tiers, each keeping the slider mix:
 // unseen posts the ranker rates at least `qualityFloor`, then the weaker unseen ones, then
 // posts seen in the last day (dropped entirely while a page of unseen posts remains), so a
@@ -18,7 +19,7 @@ function seededRand(seed: number, key: string): number {
   return ((h >>> 0) % 1_000_000) / 1_000_000;
 }
 
-export interface Selection {
+export interface Mix {
   postIds: string[];
   /** How many leading posts are unseen; anything after is "caught up" (seen in the last day). */
   unseen: number;
@@ -26,7 +27,7 @@ export interface Selection {
   seenDropped: number;
 }
 
-export function select(scored: ScoredCandidate[], ctx: UserContext, seed: number, now = Date.now()): Selection {
+export function mix(scored: ScoredCandidate[], ctx: UserContext, seed: number, now = Date.now()): Mix {
   if (scored.length === 0) return { postIds: [], unseen: 0, seenDropped: 0 };
 
   for (const s of scored) s.score += cfg().jitter * (seededRand(seed, s.postId) - 0.5);

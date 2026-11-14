@@ -47,7 +47,7 @@ export interface RawCandidate {
   score: number;
 }
 
-/** A candidate as Selection sees it: from one filter (Kata) or from discovery (Mushin). */
+/** A candidate as the Mixer sees it: from one filter (Kata) or from discovery (Mushin). */
 export interface Candidate {
   postId: string;
   source: 'filter' | 'discovery';

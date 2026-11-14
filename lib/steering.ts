@@ -13,6 +13,7 @@
 //   novelty      seen.weight                       0.6 + 1.2 x d    (0.5 -> 1.2)
 //                authorDiversityDecay              0.7 - 0.4 x d    (0.5 -> 0.5)
 //                mushin.explorationQuota           0.3 x d          (0.5 -> 0.15)
+//                explore.weight                    0.3 x d          (0.5 -> 0.15)
 //   freshness    weights.recency                   0.5 x d          (0.5 -> 0.25)
 //                recencyTauHours                   24 + 96 x (1-d)  (0.5 -> 72)
 //
@@ -48,6 +49,7 @@ export function compileSteering(steering: Steering | null | undefined): Plain {
     out.seen = { weight: 0.6 + 1.2 * n };
     out.authorDiversityDecay = 0.7 - 0.4 * n;
     mushin.explorationQuota = 0.3 * n;
+    out.explore = { weight: 0.3 * n };
   }
   if (moved(d.freshness)) {
     const f = clamp01(d.freshness);

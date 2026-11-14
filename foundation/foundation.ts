@@ -1,11 +1,14 @@
-// Engagement Scorer — the base relevance score:
-//   similarity (dominant) + quality + recency + in-network
+// ─── FOUNDATION ──────────────────────────────────────────────────────────────
+// The base score every candidate starts from; every later scorer only adjusts it:
+//   relevance to the viewer's topic (similarity, dominant) + quality + recency + in-network
+//   − contention + the first-audience lift for a new post
 // where quality is the expected value of showing the post, Σ value × P(action) — the form X's
 // open-source ranker uses. X learns P(action) with a transformer; with no training data yet,
 // each P is the post's own rate per impression, smoothed toward a prior so small counts don't
 // swing it: P = (count + prior·k) / (impressions + k). A post with 1 like from 1 view is close
 // to average, not perfect; 30 likes from 3,000 views ranks below 10 from 20.
-// Intensity is intentionally absent; it drives slot ALLOCATION, not score.
+// Intensity is intentionally absent; it drives the Mixer's slot shares, not score. A recent post
+// with few views gets a fading first-audience lift (cfg().explore).
 //
 // Comments count toward quality in proportion to how calm the post is (1 - contention), and a
 // contentious post loses cfg().contention.weight x contention: what people value, not what they
@@ -13,7 +16,7 @@
 
 import { cfg } from '../lib/config.ts';
 import { CandidateFeatures } from '../lib/types.ts';
-import { Scorer } from './types.ts';
+import { Scorer } from '../scoring/types.ts';
 
 const HOUR_MS = 3_600_000;
 // 0..1, 0.5 for an average post.
@@ -38,8 +41,8 @@ export function qualityFactor(f: CandidateFeatures): number {
   return relative / (relative + 1);
 }
 
-export const engagementScorer: Scorer = {
-  name: 'engagement',
+export const foundation: Scorer = {
+  name: 'foundation',
   apply(candidates, now) {
     const w = cfg().weights;
     for (const c of candidates) {
@@ -50,6 +53,9 @@ export const engagementScorer: Scorer = {
         recency: Math.exp(-ageHours / cfg().recencyTauHours),
         inNetwork: c.features.inNetwork ? 1 : 0,
         contention: c.features.contention ?? 0,
+        explore: ageHours <= cfg().explore.maxAgeDays * 24
+          ? cfg().explore.priorViews / (Math.max(0, c.features.viewCount) + cfg().explore.priorViews)
+          : 0,
       };
       // Calibrated relevance is always recorded (so a fit can compare it with the raw cosine);
       // it scores only when the relevance_calibration experiment turns it on.
@@ -63,10 +69,11 @@ export const engagementScorer: Scorer = {
         recency: w.recency * signals.recency,
         inNetwork: w.inNetwork * signals.inNetwork,
         contention: -cfg().contention.weight * signals.contention,
+        explore: cfg().explore.weight * signals.explore,
       };
       Object.assign(c.signals, signals, { relevance });
       Object.assign(c.parts, parts);
-      c.score += parts.similarity + parts.quality + parts.recency + parts.inNetwork + parts.contention;
+      c.score += parts.similarity + parts.quality + parts.recency + parts.inNetwork + parts.contention + parts.explore;
     }
   },
 };
