@@ -78,6 +78,10 @@ export interface CandidateFeatures {
    * replies out of proportion to approval, and regret (not interested / hide / report) per view.
    */
   contention: number;
+  /** The post's format (post_type), for the viewer's format dials. */
+  postType: string;
+  /** The viewer's mutes this post sits near (cosine >= 0.30), with each mute's strength. */
+  muteHits: { id: string; sim: number; strength: number }[];
 }
 
 export interface ScoredCandidate extends Candidate {

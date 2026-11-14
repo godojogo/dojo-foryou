@@ -5,6 +5,8 @@
 // like the architecture; rarely changes.
 
 import { Db } from '../lib/clients.ts';
+import { cfg, mergeConfig, withConfig } from '../lib/config.ts';
+import { compileSteering } from '../lib/steering.ts';
 import { anySourceOn, Candidate, ScoredCandidate } from '../lib/types.ts';
 import { retrieve, Retrieved, retrieveTopic } from './retrieval.ts';
 import { kataCandidates } from '../kata/kata.ts';
@@ -27,6 +29,8 @@ export interface FeedResult {
     /** Leading posts not seen in the last day; the rest are "caught up". */
     unseen: number;
     seenDropped: number;
+    /** The dials the viewer had moved (compiled into this ranking's settings). */
+    steered?: string[];
   };
 }
 
@@ -44,7 +48,13 @@ function merge(lists: Candidate[][]): Candidate[] {
 /** For You: every filter by intensity, plus discovery when a card is on. */
 export async function assembleFeed(db: Db, profileId: string, seed: number): Promise<FeedResult> {
   // 1-3. Query hydration, candidate sources, candidate hydration
-  return rank(await retrieve(db, profileId), seed);
+  const retrieved = await retrieve(db, profileId);
+  // The viewer's steering, over the request's config (defaults + experiment variants).
+  const overrides = compileSteering(retrieved.steering);
+  const steered = Object.keys(overrides);
+  if (steered.length === 0) return rank(retrieved, seed);
+  const result = withConfig(mergeConfig(cfg(), overrides), () => rank(retrieved, seed));
+  return { ...result, meta: { ...result.meta, steered } };
 }
 
 /** A topic tab: one filter, ranked by the same gate, judge and selection. */

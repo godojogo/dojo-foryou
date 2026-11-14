@@ -118,6 +118,20 @@ export const CONFIG = {
   // every post at or above it, whatever their filter's share.
   qualityFloor: 0,
 
+  // ── Steering (lib/steering.ts, scoring/steeringScorer.ts) ─────────────
+  // Per-format multipliers the viewer set (0 = none, 1 = as is, 2 = twice as much).
+  formats: { video: 1, photo: 1, text: 1, link: 1, poll: 1, canvas: 1, other: 1 },
+  steering: {
+    formatWeight: 0.4,     // score change = formatWeight x ln(multiplier)
+    muteWeight: 1.5,       // full penalty of a mute at strength 1 on a post squarely about it
+    // Calibrated on a muted "Art" against real candidates: art posts 0.37-0.48, unrelated music
+    // and dance posts 0.30-0.33. Full at the filters' own topic floor (0.40), so "never" removes
+    // exactly what a filter for that topic would have brought in.
+    muteNear: 0.33,        // cosine where a mute starts to apply ...
+    muteFar: 0.40,         // ... and where it applies fully
+    hardMuteStrength: 0.95, // a mute this strong is "never": posts squarely about it are dropped
+  },
+
   // Seeded jitter so a new session reorders near-ties without overturning clear winners.
   jitter: 0.04,
 } as const;

@@ -14,11 +14,14 @@
 import { cfg } from '../lib/config.ts';
 import { CandidateFeatures, RawCandidate, UserContext } from '../lib/types.ts';
 import { Db, decodeVector, pineconeQuery, RateLimitedError } from '../lib/clients.ts';
+import { Steering } from '../lib/steering.ts';
 
 export interface Retrieved {
   ctx: UserContext;
   candidates: RawCandidate[];
   features: Map<string, CandidateFeatures>;
+  /** The viewer's dials and formats (For You only; a topic tab is one filter, unsteered). */
+  steering?: Steering;
 }
 
 type Row = Record<string, unknown>;
@@ -31,12 +34,20 @@ interface ContextRow {
   filters: { id: string; intensity: number; vector: string }[];
   interest_seeds: { share: number; vector: string }[];
   candidates: Row[];
+  steering?: Steering;
+  expired_filter_ids?: string[];
+  mutes?: { id: string; label: string; strength: number }[];
 }
 
 export async function retrieve(db: Db, profileId: string): Promise<Retrieved> {
   // 1. The viewer, and the candidates Postgres can produce from indexes and precomputed pools.
-  const context = await db.rpc<ContextRow>('foryou_context_v3', { p_profile_id: profileId });
+  const context = await db.rpc<ContextRow>('foryou_context_v4', { p_profile_id: profileId });
   if (context?.error === 'rate_limited') throw new RateLimitedError('rate_limited');
+
+  // A temporary topic past its expiry is out, with its candidates (it is deleted within the hour).
+  const expired = new Set((context.expired_filter_ids ?? []).map(String));
+  context.filters = (context.filters ?? []).filter((f) => !expired.has(String(f.id)));
+  context.candidates = (context.candidates ?? []).filter((c) => !expired.has(String(c.filter_id)));
 
   const ctx: UserContext = {
     profileId,
@@ -96,18 +107,21 @@ export async function retrieve(db: Db, profileId: string): Promise<Retrieved> {
   }
 
   // 3. Features for every distinct candidate, under the live visibility rule.
-  const features = await hydrateFeatures(db, profileId, candidates);
+  const muteStrength = new Map((context.mutes ?? []).map((m) => [String(m.id), Number(m.strength) || 0]));
+  const features = await hydrateFeatures(db, profileId, candidates, muteStrength);
 
-  return { ctx, candidates, features };
+  return { ctx, candidates, features, steering: context.steering };
 }
 
 // Stage 3 for any candidate set: features under the live visibility rule (the authoritative gate
 // over Pinecone's copy) — a candidate missing from the result is no longer visible.
-async function hydrateFeatures(db: Db, profileId: string, candidates: RawCandidate[]): Promise<Map<string, CandidateFeatures>> {
+async function hydrateFeatures(
+  db: Db, profileId: string, candidates: RawCandidate[], muteStrength = new Map<string, number>(),
+): Promise<Map<string, CandidateFeatures>> {
   const ids = [...new Set(candidates.map((c) => c.postId))];
   const features = new Map<string, CandidateFeatures>();
   if (ids.length === 0) return features;
-  const rows = await db.rpc<Row[]>('foryou_features_v5', { p_profile_id: profileId, p_post_ids: ids });
+  const rows = await db.rpc<Row[]>('foryou_features_v6', { p_profile_id: profileId, p_post_ids: ids });
   for (const r of rows ?? []) {
     const postId = String(r.post_id);
     features.set(postId, {
@@ -124,6 +138,10 @@ async function hydrateFeatures(db: Db, profileId: string, candidates: RawCandida
       negativeSimilarity: r.negative_similarity == null ? null : Number(r.negative_similarity),
       topic: r.topic == null ? null : Number(r.topic),
       contention: Number(r.contention) || 0,
+      postType: String(r.post_type ?? ''),
+      muteHits: ((r.mute_hits as { id: string; sim: number }[] | null) ?? [])
+        .map((h) => ({ id: String(h.id), sim: Number(h.sim) || 0, strength: muteStrength.get(String(h.id)) ?? 0 }))
+        .filter((h) => h.strength > 0),
     });
   }
   return features;
